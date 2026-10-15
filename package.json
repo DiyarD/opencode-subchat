@@ -1,0 +1,29 @@
+{
+  "name": "opencode-subchat",
+  "version": "0.1.0",
+  "description": "OpenCode TUI plugin: go into a subagent session and talk to it without hunting for its session ID.",
+  "license": "MIT",
+  "type": "module",
+  "//": "A local directory plugin is resolved as <dir>/tui by Host.resolve, so tui.tsx sits at the root. The exports map keeps package installs working too.",
+  "exports": {
+    "./tui": "./tui.tsx"
+  },
+  "files": ["tui.tsx", "README.md"],
+  "keywords": ["opencode", "opencode-plugin", "subagent", "tui"],
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@opencode/plugin": ">=2.0.26",
+    "@opentui/core": ">=0.5.8",
+    "@opentui/solid": ">=0.5.8",
+    "solid-js": ">=1.9.0"
+  },
+  "devDependencies": {
+    "@opencode/plugin": "2.0.26",
+    "@opentui/core": "0.6.6",
+    "@opentui/solid": "0.6.6",
+    "solid-js": "1.9.12",
+    "typescript": "5.9.2"
+  }
+}

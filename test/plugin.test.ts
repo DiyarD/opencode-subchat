@@ -13,6 +13,7 @@ interface Calls {
   selects: {
     title: string
     options: readonly { title: string; value: string; description?: string; category?: string }[]
+    search?: (query: string, options: readonly any[]) => readonly any[]
     actions?: readonly { bind: string; title: string; onTrigger: (value: string) => unknown }[]
   }[]
 }
@@ -126,6 +127,7 @@ function harness(
     calls,
     slots,
     command: () => layers[0]?.commands?.[0],
+    commands: () => layers[0]?.commands ?? [],
     choose: (value: string) => (selectResult = value),
     setPromptText: (value: string) => (promptText = value),
   }
@@ -163,12 +165,15 @@ test("uses a binding the TUI does not already own", () => {
   expect(cmd?.slash?.name).toBe("children")
 })
 
-test("adds an additive footer slot and never replaces one", () => {
+test("adds additive footer and composer slots and never replaces one", () => {
   const { context, slots } = harness({ sessions: tree })
   plugin.setup(context as never)
-  expect(slots).toHaveLength(1)
+  expect(slots).toHaveLength(2)
   expect(slots[0].append).toBe("prompt.footer.status")
   expect(slots[0].replace).toBeUndefined()
+  expect(slots[1].append).toBe("session.composer.top")
+  expect(slots[1].replace).toBeUndefined()
+  expect(typeof slots[1].render).toBe("function")
 })
 
 test("is disabled outside a session", () => {
@@ -211,9 +216,21 @@ test("picker offers descendants with status, never the session itself", async ()
   const values = picker.options.map((option) => option.value)
   expect(values).not.toContain(root)
   expect([...values].toSorted()).toEqual([child, running, grandchild].toSorted())
-  expect(picker.options.find((option) => option.value === running)?.description).toContain("running")
-  expect(picker.options.find((option) => option.value === grandchild)?.category).toBe("nested")
-  expect(picker.options.find((option) => option.value === child)?.category).toBe("direct")
+  expect(picker.options.find((option) => option.value === running)?.category).toBe("Running chats")
+  expect(picker.options.find((option) => option.value === child)?.category).toBe("Idle chats")
+  expect(picker.options.find((option) => option.value === grandchild)?.category).toBe("Idle chats")
+  expect(picker.options.find((option) => option.value === grandchild)?.description).toContain("depth 2")
+})
+
+test("picker keeps section headings by using the built-in search and running-first order", async () => {
+  const h = harness({ sessions: tree, selectResult: undefined })
+  plugin.setup(h.context as never)
+  await h.command().run()
+  const picker = h.calls.selects[0]!
+  // A custom search makes OpenCode flatten results and drop the category headings.
+  expect(picker.search).toBeUndefined()
+  expect(picker.options[0].value).toBe(running)
+  expect(picker.options[0].category).toBe("Running chats")
 })
 
 test("steering sends a steer prompt to the child without navigating", async () => {
@@ -251,4 +268,64 @@ test("the footer badge is an additive claim with a render function", () => {
   plugin.setup(h.context as never)
   const claim = h.slots[0]!
   expect(typeof claim.render).toBe("function")
+})
+
+test("registers a direct /subagent command with arguments and no aliases", () => {
+  const { context, commands } = harness({ sessions: tree })
+  plugin.setup(context as never)
+  const send = commands()[1]
+  expect(send.id).toBe("subchat.send")
+  expect(send.slash).toEqual({ name: "subagent", arguments: true })
+  expect(send.enabled()).toBe(true)
+})
+
+test("direct command steers the message to the subagent named by id or title", async () => {
+  const h = harness({ sessions: tree })
+  plugin.setup(h.context as never)
+  const send = h.commands()[1]!
+
+  await send.run("ses_child hey bro what's up!")
+  expect(h.calls.prompted).toEqual([{ sessionID: child, text: "hey bro what's up!", delivery: "steer" }])
+
+  await send.run("Running child stop and summarise")
+  expect(h.calls.prompted[1]).toEqual({ sessionID: running, text: "stop and summarise", delivery: "steer" })
+})
+
+test("direct command prefers a running subagent when a title is ambiguous", async () => {
+  const ambiguous = {
+    [root]: session(root, "Parent"),
+    idle: session("ses_idle", "Reviewer", root),
+    [running]: session(running, "Reviewer", root),
+  }
+  const h = harness({ sessions: ambiguous })
+  plugin.setup(h.context as never)
+  await h.commands()[1]!.run("Reviewer check this")
+  expect(h.calls.prompted).toEqual([{ sessionID: running, text: "check this", delivery: "steer" }])
+})
+
+test("direct command without arguments opens the picker", async () => {
+  const h = harness({ sessions: tree })
+  plugin.setup(h.context as never)
+  await h.commands()[1]!.run(undefined)
+  expect(h.calls.selects).toHaveLength(1)
+  expect(h.calls.prompted).toHaveLength(0)
+})
+
+test("direct command reports an unknown or message-less target without sending", async () => {
+  const h = harness({ sessions: tree })
+  plugin.setup(h.context as never)
+  const send = h.commands()[1]!
+
+  await send.run("ghost hello")
+  expect(h.calls.prompted).toHaveLength(0)
+  expect(h.calls.toasts.some((toast) => toast.variant === "warning")).toBe(true)
+
+  await send.run("ses_child")
+  expect(h.calls.prompted).toHaveLength(0)
+})
+
+test("direct command is disabled outside a session", () => {
+  const { context, commands } = harness({ route: { type: "home" }, sessions: tree })
+  plugin.setup(context as never)
+  expect(commands()[1].enabled()).toBe(false)
 })

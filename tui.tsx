@@ -208,24 +208,17 @@ function SubagentPicker(props: { sessionID: string }) {
     scroll.scrollChildIntoView(id)
   })
 
-  // The layer stays registered and each command checks visibility at dispatch time. A stale
-  // reactive `enabled` would let the very first key reach the host's own down/tab bindings.
-  const guard = (action: () => void) => () => {
-    if (!visible()) return false
-    action()
-  }
-
+  // Only claim navigation keys while the list is actually visible. A permanently registered
+  // high-priority layer would shadow OpenCode's own up/down/tab/escape bindings everywhere.
   keymap.layer(() => ({
     mode: "global",
-    priority: 100,
-    target: () => editor,
+    priority: 10,
+    enabled: () => visible(),
     commands: [
-      { id: "subchat.autocomplete.prev", title: "Previous autocomplete item", group: "Autocomplete", bind: "up", run: guard(() => move(-1)) },
-      { id: "subchat.autocomplete.next", title: "Next autocomplete item", group: "Autocomplete", bind: "down", run: guard(() => move(1)) },
-      { id: "subchat.autocomplete.prevpage", title: "Previous autocomplete page", group: "Autocomplete", bind: "pageup", run: guard(() => move(-3)) },
-      { id: "subchat.autocomplete.nextpage", title: "Next autocomplete page", group: "Autocomplete", bind: "pagedown", run: guard(() => move(3)) },
-      { id: "subchat.autocomplete.hide", title: "Hide autocomplete", group: "Autocomplete", bind: "escape", run: guard(() => hide()) },
-      { id: "subchat.autocomplete.select", title: "Select autocomplete item", group: "Autocomplete", bind: "tab", run: guard(() => insert(selected())) },
+      { id: "subchat.picker.prev", title: "Previous subagent", group: "Autocomplete", bind: "up", run: () => move(-1) },
+      { id: "subchat.picker.next", title: "Next subagent", group: "Autocomplete", bind: "down", run: () => move(1) },
+      { id: "subchat.picker.hide", title: "Hide subagents", group: "Autocomplete", bind: "escape", run: () => hide() },
+      { id: "subchat.picker.insert", title: "Insert subagent id", group: "Autocomplete", bind: "tab", run: () => insert(selected()) },
     ],
   }))
 
